@@ -1,5 +1,4 @@
 {
   "name": "Gmail Cleanup Script Generator",
-  "description": "An application that uses Gemini to generate a Google Apps Script to safely clean up emails from your Gmail promotions, social, and junk folders without requiring direct access to your account.",
-  "requestFramePermissions": []
+  "description": "An application that uses Gemini to first summarize your latest emails, and then generate a Google Apps Script to safely clean up your Gmail promotions, social, and junk folders without requiring direct access to your account."
 }

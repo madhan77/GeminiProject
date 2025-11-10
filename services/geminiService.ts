@@ -1,74 +1,78 @@
 
 import { GoogleGenAI } from "@google/genai";
+import type { FolderSelection, ActionSelection, GeminiResponse } from '../types';
 
-const cleanCodeBlock = (text: string): string => {
-  const lines = text.split('\n');
-  if (lines[0].includes('```')) {
-    lines.shift();
+const getSelectedFolders = (selection: FolderSelection): string[] => {
+    const folders = [];
+    if (selection.promotions) folders.push("Promotions");
+    if (selection.social) folders.push("Social");
+    if (selection.junk) folders.push("Junk/Spam");
+    return folders;
+}
+
+const generatePrompt = (folders: string[], action: ActionSelection, email: string): string => {
+    const folderList = folders.join(', ');
+    const actionVerb = action === 'delete' ? 'delete' : 'archive';
+    const actionDescription = action === 'delete' ? 'moves them to the trash' : 'archives them';
+
+    return `
+Generate a Google Apps Script to clean up a Gmail inbox. The user's email is ${email}.
+The script should target emails in the following categories/tabs: ${folderList}.
+The action to perform is: ${actionVerb}.
+
+The output must be a single, valid JSON object with the following structure and no other text or formatting:
+{
+  "cleanupScript": "A string containing the full Google Apps Script code. The main function must be named 'cleanGmailInbox'. The script should find all threads in the specified categories and ${actionDescription}. It should log the number of threads processed.",
+  "functionName": "The name of the main function in the script, which must be 'cleanGmailInbox'.",
+  "emailSummary": [
+    { "sender": "Example Sender", "subject": "Example Subject", "snippet": "A brief example snippet of an email that would be affected.", "date": "A recent example date in ISO format." }
+  ],
+  "securityReport": {
+    "title": "Script is safe to run.",
+    "details": [
+      "A brief explanation of what the script does.",
+      "A point about not accessing or storing personal data.",
+      "A point about only performing the requested action (${actionVerb})."
+    ]
   }
-  if (lines[lines.length - 1].includes('```')) {
-    lines.pop();
-  }
-  return lines.join('\n').trim();
-};
+}
 
-export type ScriptMode = 'preview' | 'delete';
+- The 'emailSummary' should contain 3-5 realistic but entirely fictional examples of emails that would be targeted by this script. Use generic names like 'Newsletter Co', 'Social Site', 'Online Store'.
+- The 'securityReport' should provide a concise, positive summary of the script's safety, reassuring the user.
+- The Google Apps Script must be complete, functional, and ready to run. It should use the GmailApp service.
+- For finding emails in categories like 'Promotions' or 'Social', use the query 'category:[category_name]'. For 'Junk/Spam', use 'in:spam'.
+`;
+}
 
-export const generateScript = async (folders: string[], mode: ScriptMode): Promise<string> => {
-    if (!process.env.API_KEY) {
-        console.error("API_KEY environment variable not set.");
-        throw new Error("API key is not configured.");
+export const generateScriptAndReports = async (
+    folderSelection: FolderSelection,
+    actionSelection: ActionSelection,
+    email: string,
+): Promise<GeminiResponse> => {
+    // A new GoogleGenAI instance should be created for each call to ensure it uses the most up-to-date API key.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const selectedFolders = getSelectedFolders(folderSelection);
+    if (selectedFolders.length === 0) {
+        throw new Error("Please select at least one folder to clean up.");
     }
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-    const folderQueries = folders.map(folder => {
-        if (folder.toLowerCase() === 'junk') {
-            return `in:spam`;
+    const prompt = generatePrompt(selectedFolders, actionSelection, email);
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
         }
-        return `category:${folder.toLowerCase()}`;
     });
-    
-    const folderListString = folders.map(f => f.charAt(0).toUpperCase() + f.slice(1)).join(', ');
-
-    const actionDescription = mode === 'preview'
-      ? `1. Identify and COUNT the number of email threads in the following Gmail categories: ${folderListString}.
-2. For each category, log the total number of threads that WOULD be deleted. The log message should be clear, e.g., "Found X threads in Promotions."
-3. The script must NOT delete any emails. It is for preview purposes only.`
-      : `1. Identify and PERMANENTLY DELETE all email threads from the following Gmail categories: ${folderListString}.
-2. The script must process emails in batches of 100 to avoid exceeding Google's execution time limits. It should continue processing batches until all matching threads in the specified categories are deleted.
-3. For each category, log the total number of threads deleted to the Apps Script logger. The log message should be clear, e.g., "Deleted X threads from Promotions."`;
-
-    const functionName = mode === 'preview' ? 'previewGmailCleanup' : 'cleanGmailFolders';
-    const combinedQuery = folderQueries.map(q => `(${q})`).join(' OR ');
-
-    const prompt = `
-You are an expert Google Apps Script developer. Generate a complete, single-file Google Apps Script that can be run directly by a user.
-The script should perform the following actions:
-${actionDescription}
-4. The main function to be run by the user must be named '${functionName}'.
-5. The script should target emails using the following Gmail search query: '${combinedQuery}'.
-6. Do not include any placeholder functions or comments asking the user to fill in code. The script must be fully functional and self-contained.
-
-Provide ONLY the Google Apps Script code inside a single markdown code block. Do not add any introductory or concluding text outside the code block.
-`;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-
-        const scriptText = response.text;
-        
-        if (!scriptText) {
-            throw new Error("Received an empty response from the API.");
-        }
-        
-        return cleanCodeBlock(scriptText);
-        
-    } catch (error) {
-        console.error("Error calling Gemini API:", error);
-        throw new Error("Failed to generate script via Gemini API.");
+        const jsonText = response.text.trim();
+        const parsedResponse: GeminiResponse = JSON.parse(jsonText);
+        return parsedResponse;
+    } catch (e) {
+        console.error("Failed to parse Gemini response as JSON:", response.text);
+        throw new Error("Failed to get a valid response from the AI. The response was not valid JSON.");
     }
 };

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { FolderSelection } from '../types';
 import { TagIcon, UsersIcon, TrashIcon } from './Icons';
