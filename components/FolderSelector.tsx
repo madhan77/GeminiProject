@@ -6,6 +6,7 @@ import { TagIcon, UsersIcon, TrashIcon } from './Icons';
 interface FolderSelectorProps {
   selection: FolderSelection;
   setSelection: React.Dispatch<React.SetStateAction<FolderSelection>>;
+  disabled?: boolean;
 }
 
 const folderOptions = [
@@ -15,7 +16,7 @@ const folderOptions = [
 ] as const;
 
 
-export const FolderSelector: React.FC<FolderSelectorProps> = ({ selection, setSelection }) => {
+export const FolderSelector: React.FC<FolderSelectorProps> = ({ selection, setSelection, disabled = false }) => {
   const handleToggle = (folder: keyof FolderSelection) => {
     setSelection(prev => ({ ...prev, [folder]: !prev[folder] }));
   };
@@ -26,10 +27,14 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({ selection, setSe
         <label
           key={option.id}
           htmlFor={option.id}
-          className={`relative flex flex-col items-center justify-center p-5 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+          className={`relative flex flex-col items-center justify-center p-5 rounded-lg border-2 transition-all duration-200 ${
             selection[option.id]
               ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-300'
-              : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:border-primary-400 dark:hover:border-primary-500'
+              : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'
+          } ${
+            disabled
+              ? 'cursor-not-allowed opacity-60'
+              : 'cursor-pointer hover:border-primary-400 dark:hover:border-primary-500'
           }`}
         >
           <input
@@ -37,6 +42,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({ selection, setSe
             id={option.id}
             checked={selection[option.id]}
             onChange={() => handleToggle(option.id)}
+            disabled={disabled}
             className="sr-only"
           />
           <div className="flex flex-col items-center">
@@ -57,4 +63,3 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({ selection, setSe
     </div>
   );
 };
-   
